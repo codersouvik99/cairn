@@ -36,6 +36,17 @@ const (
 	RuleAppArmorUnconfined = "apparmor-unconfined"
 )
 
+// Go-style acronym aliases keep rule constants convenient for callers that
+// prefer mixed-case names while the uppercase forms remain descriptive.
+const (
+	RuleHostPid            = RuleHostPID
+	RuleHostIpc            = RuleHostIPC
+	RuleCapAddSysAdmin     = RuleCapAddSYSAdmin
+	RuleCapAddNetAdmin     = RuleCapAddNETAdmin
+	RuleCapAddAll          = RuleCapAddALL
+	RuleApparmorUnconfined = RuleAppArmorUnconfined
+)
+
 // Finding is an evidence-backed security finding for one Compose service.
 //
 // Line and Column are one-based YAML coordinates when yaml.v3 supplied a
