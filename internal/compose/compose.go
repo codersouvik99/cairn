@@ -45,16 +45,22 @@ const (
 // duplicate name makes the type convenient for callers that use either term.
 type Finding struct {
 	Service     string
+	ServiceName string
+	SourceFile  string
 	Filename    string
 	File        string
 	Source      string
 	SourceRef   string
+	LineNumber  int
 	Line        int
 	Column      int
 	RuleID      string
+	Rule        string
 	Severity    string
+	Message     string
 	Explanation string
 	Remediation string
+	Raw         string
 	Evidence    string
 }
 
@@ -525,16 +531,22 @@ func makeFinding(filename, service string, primary, fallback *yaml.Node, source,
 	}
 	return Finding{
 		Service:     service,
+		ServiceName: service,
+		SourceFile:  filename,
 		Filename:    filename,
 		File:        filename,
 		Source:      source,
 		SourceRef:   source,
+		LineNumber:  line,
 		Line:        line,
 		Column:      column,
 		RuleID:      ruleID,
+		Rule:        ruleID,
 		Severity:    severity,
+		Message:     explanation,
 		Explanation: explanation,
 		Remediation: remediation,
+		Raw:         evidence,
 		Evidence:    evidence,
 	}
 }
