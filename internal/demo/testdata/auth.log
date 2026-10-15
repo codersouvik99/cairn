@@ -1,0 +1,7 @@
+2026-01-15T10:00:00Z edge sshd[101]: Failed password for deploy from 203.0.113.42 port 42001 ssh2
+2026-01-15T10:01:00Z edge sshd[102]: Failed password for deploy from 203.0.113.42 port 42002 ssh2
+2026-01-15T10:02:00Z edge sshd[103]: Failed password for deploy from 203.0.113.42 port 42003 ssh2
+2026-01-15T10:03:00Z edge sshd[104]: Invalid user admin from 203.0.113.42 port 42004 ssh2
+2026-01-15T10:04:00Z edge sshd[105]: Failed password for deploy from 203.0.113.42 port 42005 ssh2
+2026-01-15T10:05:00Z edge sshd[106]: Accepted publickey for deploy from 203.0.113.42 port 42006 ssh2
+2026-01-15T10:07:00Z edge sudo[201]: deploy : TTY=pts/0 ; PWD=/srv/app ; USER=root ; COMMAND=/usr/bin/docker ps

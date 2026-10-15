@@ -1,4 +1,4 @@
-GO ?= ./.tools/go/bin/go
+GO ?= $(if $(wildcard .tools/go/bin/go),./.tools/go/bin/go,go)
 GOFLAGS ?= -mod=vendor
 
 .PHONY: test build fmt vet
