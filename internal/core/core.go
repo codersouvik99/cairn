@@ -189,6 +189,7 @@ func (p Parser) ParseLine(sourceFile string, lineNumber int, line string) LineRe
 
 	timestamp, timestampText, remainder, timestampRecognized, timestampWarnings :=
 		parseTimestamp(raw, p.Metadata)
+	pendingWarnings := make([]Warning, 0, len(timestampWarnings))
 	if timestampWarnings != nil {
 		for _, message := range timestampWarnings {
 			kind := WarningAmbiguousTimestamp
@@ -197,7 +198,7 @@ func (p Parser) ParseLine(sourceFile string, lineNumber int, line string) LineRe
 			} else if strings.Contains(message, "invalid ") || strings.Contains(message, "unknown syslog month") {
 				kind = WarningMalformed
 			}
-			result.Warnings = append(result.Warnings, makeWarning(kind, sourceFile, lineNumber, raw, message))
+			pendingWarnings = append(pendingWarnings, makeWarning(kind, sourceFile, lineNumber, raw, message))
 		}
 	}
 	if !timestampRecognized {
@@ -214,12 +215,14 @@ func (p Parser) ParseLine(sourceFile string, lineNumber int, line string) LineRe
 	event, recognized := parseBody(body, process)
 	if !recognized {
 		if looksLikeAuthenticationRecord(raw) {
+			result.Warnings = append(result.Warnings, pendingWarnings...)
 			result.Warnings = append(result.Warnings, makeWarning(
 				WarningUnrecognized, sourceFile, lineNumber, raw,
 				"authentication-looking line is not a supported record"))
 		}
 		return result
 	}
+	result.Warnings = append(result.Warnings, pendingWarnings...)
 	if !timestampRecognized {
 		result.Warnings = append(result.Warnings, makeWarning(
 			WarningMalformed, sourceFile, lineNumber, raw,
