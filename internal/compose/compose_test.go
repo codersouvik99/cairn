@@ -219,6 +219,22 @@ func TestAuditLocations(t *testing.T) {
 	}
 }
 
+func TestAuditMergedServiceValues(t *testing.T) {
+	compose := `x-security: &security
+  privileged: true
+services:
+  api:
+    <<: *security
+`
+	findings, err := Audit([]byte(compose), "merged.yaml")
+	if err != nil {
+		t.Fatalf("Audit() error = %v", err)
+	}
+	if len(findings) != 1 || findings[0].RuleID != RulePrivileged {
+		t.Fatalf("Audit() findings = %#v, want one privileged finding", findings)
+	}
+}
+
 func TestAuditMalformedYAML(t *testing.T) {
 	for _, input := range []string{
 		"services:\n  api: [\n",

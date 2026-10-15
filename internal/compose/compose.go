@@ -506,6 +506,7 @@ func isSensitiveHostPath(value string) bool {
 		"/root",
 		"/run",
 		"/sys",
+		"/var",
 		"/var/lib/containerd",
 		"/var/lib/docker",
 		"/var/run",
@@ -572,14 +573,50 @@ func documentRoot(root *yaml.Node) *yaml.Node {
 }
 
 func mappingEntry(node *yaml.Node, key string) (keyNode, valueNode *yaml.Node, ok bool) {
+	return mappingEntrySeen(node, key, make(map[*yaml.Node]bool))
+}
+
+func mappingEntrySeen(node *yaml.Node, key string, seen map[*yaml.Node]bool) (keyNode, valueNode *yaml.Node, ok bool) {
 	node = resolveAlias(node)
 	if node == nil || node.Kind != yaml.MappingNode {
 		return nil, nil, false
 	}
+	if seen[node] {
+		return nil, nil, false
+	}
+	seen[node] = true
+	defer delete(seen, node)
+
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		candidate := resolveAlias(node.Content[i])
 		if candidate != nil && candidate.Kind == yaml.ScalarNode && candidate.Value == key {
 			return node.Content[i], node.Content[i+1], true
+		}
+	}
+
+	// YAML merge keys are common in Compose files. Direct service values above
+	// take precedence, matching YAML's merge semantics; inherited values are
+	// still audited when a service does not override them. The cycle guard also
+	// makes self-referential or otherwise odd aliases harmless.
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		mergeKey := resolveAlias(node.Content[i])
+		if mergeKey == nil || mergeKey.Kind != yaml.ScalarNode || mergeKey.Value != "<<" {
+			continue
+		}
+		merged := resolveAlias(node.Content[i+1])
+		if merged == nil {
+			continue
+		}
+		if merged.Kind == yaml.SequenceNode {
+			for _, item := range merged.Content {
+				if keyNode, valueNode, ok := mappingEntrySeen(item, key, seen); ok {
+					return keyNode, valueNode, true
+				}
+			}
+			continue
+		}
+		if keyNode, valueNode, ok := mappingEntrySeen(merged, key, seen); ok {
+			return keyNode, valueNode, true
 		}
 	}
 	return nil, nil, false
