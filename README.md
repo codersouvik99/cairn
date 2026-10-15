@@ -90,6 +90,7 @@ the container user:
 mkdir -p demo-case report-out
 docker run --rm --network=none --read-only \
   --cap-drop=ALL --security-opt=no-new-privileges \
+  --user "$(id -u):$(id -g)" \
   -v "$PWD/demo-case:/case:ro" \
   -v "$PWD/report-out:/out" \
   cairn:0.1.0 analyze --case-dir /case --output /out/report.html
