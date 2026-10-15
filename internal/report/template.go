@@ -113,7 +113,9 @@ const reportHTML = `<!doctype html>
             {{if .SourceIP}}<p class="muted">Source: <code>{{.SourceIP}}</code>{{if .User}} · User: <code>{{.User}}</code>{{end}}</p>{{end}}
             <div class="evidence">
               <strong>Evidence</strong>
-              {{range .Evidence}}<div class="location">{{evidenceLocation .}}</div><pre>{{.Raw}}</pre>{{end}}
+              {{range .Evidence}}
+                {{if .SourceReferences}}{{range .SourceReferences}}<div class="location">{{sourceLocation .}}</div><pre>{{.Raw}}</pre>{{end}}{{else}}<div class="location">{{evidenceLocation .}}</div><pre>{{.Raw}}</pre>{{end}}
+              {{end}}
             </div>
             {{if eq .Rule "brute_force"}}<p><strong>Remediation:</strong> rate-limit or disable password authentication, review the affected account, and restrict SSH access to trusted sources.</p>{{else if eq .Rule "success_after_failures"}}<p><strong>Remediation:</strong> verify the login with the account owner, rotate credentials if unexpected, and review the host for follow-on activity.</p>{{else}}<p><strong>Remediation:</strong> verify the administrative action, review sudo policy, and remove unnecessary root access.</p>{{end}}
           </article>
@@ -147,9 +149,9 @@ const reportHTML = `<!doctype html>
         {{range .Timeline}}
           <article class="event">
             <div class="event-head"><h3><span class="event-dot"></span>{{eventLabel .}}</h3><time>{{formatTime .Timestamp}}</time></div>
-            <div class="location">{{evidenceLocation .}}</div>
+            {{if .SourceReferences}}{{range .SourceReferences}}<div class="location">{{sourceLocation .}}</div>{{end}}{{else}}<div class="location">{{evidenceLocation .}}</div>{{end}}
             <p>{{if .User}}User <code>{{.User}}</code>{{end}}{{if .SourceIP}} from <code>{{.SourceIP}}</code>{{end}}{{if .TargetUser}} targeting <code>{{.TargetUser}}</code>{{end}}{{if .Command}} · command <code>{{.Command}}</code>{{end}}</p>
-            <div class="evidence"><pre>{{.Raw}}</pre></div>
+            <div class="evidence">{{if .SourceReferences}}{{range .SourceReferences}}<pre>{{.Raw}}</pre>{{end}}{{else}}<pre>{{.Raw}}</pre>{{end}}</div>
           </article>
         {{end}}
         </div>

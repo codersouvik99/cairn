@@ -21,6 +21,7 @@ var htmlTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
 	"findingLocation":  findingLocation,
 	"composeLocation":  composeLocation,
 	"evidenceLocation": evidenceLocation,
+	"sourceLocation":   sourceLocation,
 	"join":             strings.Join,
 }).Parse(reportHTML))
 
@@ -129,6 +130,21 @@ func evidenceLocation(event core.Event) string {
 		return "unknown source"
 	}
 	return fmt.Sprintf("%s:%d", event.SourceFile, event.LineNumber)
+}
+
+func sourceLocation(reference core.SourceReference) string {
+	filename := reference.SourceFile
+	if filename == "" {
+		filename = reference.Filename
+	}
+	line := reference.LineNumber
+	if line == 0 {
+		line = reference.Line
+	}
+	if filename == "" {
+		return "unknown source"
+	}
+	return fmt.Sprintf("%s:%d", filename, line)
 }
 
 // Keep the renderer's writer shape visible to package users and make it easy

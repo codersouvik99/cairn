@@ -204,3 +204,33 @@ func TestReportEscapesUntrustedEvidence(t *testing.T) {
 		t.Fatal("report does not contain escaped evidence")
 	}
 }
+
+func TestAnalyzeDeduplicatesOverlappingSourcesButReportsBothLocations(t *testing.T) {
+	directory := t.TempDir()
+	line := "2026-01-15T10:00:00Z edge sshd[1]: Failed password for alice from 203.0.113.9 port 22 ssh2\n"
+	for _, name := range []string{"auth.log", "secure"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(line), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	data, err := AnalyzeCase(Options{CaseDir: directory, Timezone: time.UTC})
+	if err != nil {
+		t.Fatalf("AnalyzeCase() error = %v", err)
+	}
+	if len(data.Timeline) != 1 {
+		t.Fatalf("timeline events = %d, want one canonical event", len(data.Timeline))
+	}
+	if got := len(data.Timeline[0].SourceReferences); got != 2 {
+		t.Fatalf("source references = %d, want two", got)
+	}
+	html, err := report.RenderHTML(data)
+	if err != nil {
+		t.Fatalf("RenderHTML() error = %v", err)
+	}
+	text := string(html)
+	for _, want := range []string{"auth.log:1", "secure:1"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("report does not preserve %q", want)
+		}
+	}
+}

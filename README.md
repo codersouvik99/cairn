@@ -128,7 +128,8 @@ Run:
 RFC3339 timestamps with an explicit offset are preferred. Traditional syslog
 timestamps omit the year, so `--year` is required for reliable correlation of
 those records. CAIRN uses UTC by default unless another IANA timezone is
-provided.
+provided. The CLI embeds Go's timezone database, so named zones also work in
+the minimal Docker image.
 
 CAIRN reads only these root-level filenames:
 
@@ -145,6 +146,8 @@ CAIRN reads only these root-level filenames:
 It refuses symlink inputs, non-regular files, path traversal, and files over
 the built-in size limit. Unsupported or malformed lines become warnings in
 the report instead of being executed or silently treated as evidence.
+The report destination must not be one of the supported input files, an
+existing symlink, or another hardlink to input evidence.
 
 ## Deterministic rules
 
@@ -153,13 +156,20 @@ Authentication rules use explicit, documented windows:
 1. **Repeated SSH failures** — at least five failed or invalid-user attempts
    from one source IP within ten minutes.
 2. **Successful login after failures** — a successful login from that same
-   source IP within fifteen minutes of the failure activity.
+   source IP within fifteen minutes of a repeated-failure sequence. The
+   repeated-failure threshold and ten-minute failure window also apply to
+   this finding.
 3. **Potential privilege escalation** — explicit sudo-to-root activity or a
-   root session that follows a successful login by the same user. The latter
-   is deliberately described as potential rather than confirmed escalation.
+   root session that follows a successful login by the same user within
+   fifteen minutes. The latter is deliberately described as potential rather
+   than confirmed escalation.
 
 Events without reliable timestamps remain visible in the report but are not
 used for time-window correlation.
+
+Identical normalized events found in overlapping supported log files count
+once for detection thresholds. Their source filenames, line numbers, and raw
+lines remain visible in the report as separate evidence references.
 
 The Compose audit currently reports these high-confidence settings:
 
