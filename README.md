@@ -75,7 +75,7 @@ GO=/path/to/go make test
 ## Docker build and offline run
 
 The builder image is pinned by tag and digest. Go modules are vendored and the
-Dockerfile's compilation step explicitly uses `--network=none`.
+documented Docker build explicitly uses `--network=none`.
 
 Build after the pinned builder image is available locally:
 

@@ -7,9 +7,11 @@ COPY go.mod go.sum ./
 COPY vendor ./vendor
 COPY . .
 
-# All Go dependencies are vendored. Keeping this build step networkless makes
-# the dependency boundary explicit after the pinned builder image is cached.
-RUN --network=none CGO_ENABLED=0 GOFLAGS=-mod=vendor go build \
+# All Go dependencies are vendored. The documented docker build command uses
+# --network=none, so this build step cannot fetch anything after the pinned
+# builder image is cached. Avoid Dockerfile-only BuildKit syntax so the image
+# also builds with the standard Docker legacy builder.
+RUN CGO_ENABLED=0 GOFLAGS=-mod=vendor go build \
     -trimpath -buildvcs=false -ldflags="-s -w" \
     -o /out/cairn ./cmd/cairn
 
