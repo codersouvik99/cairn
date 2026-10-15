@@ -1,0 +1,15 @@
+.tools/
+
+# Go build output
+/bin/
+/dist/
+*.test
+
+# Generated reports and local fixtures
+/out/
+/tmp/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
