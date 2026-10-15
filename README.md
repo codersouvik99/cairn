@@ -76,6 +76,8 @@ GO=/path/to/go make test
 
 The builder image is pinned by tag and digest. Go modules are vendored and the
 documented Docker build explicitly uses `--network=none`.
+The Dockerfile uses only the default Dockerfile syntax, so BuildKit does not
+need to fetch a separate remote frontend image.
 
 Build after the pinned builder image is available locally:
 
