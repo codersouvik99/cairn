@@ -105,3 +105,30 @@ func TestAnalyzeCaseRejectsOversizedInput(t *testing.T) {
 		t.Fatalf("warnings = %+v, want size warning", data.Warnings)
 	}
 }
+
+func TestReportEscapesUntrustedEvidence(t *testing.T) {
+	directory := t.TempDir()
+	auth := "2026-01-15T10:00:00Z edge sshd[1]: Failed password for <script>alert(1)</script> from 203.0.113.9 port 22 ssh2\n"
+	compose := "services:\n  '<img src=x onerror=alert(1)>':\n    privileged: true\n"
+	if err := os.WriteFile(filepath.Join(directory, "auth.log"), []byte(auth), 0o600); err != nil {
+		t.Fatalf("write auth log: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "compose.yml"), []byte(compose), 0o600); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	data, err := AnalyzeCase(Options{CaseDir: directory, Timezone: time.UTC})
+	if err != nil {
+		t.Fatalf("AnalyzeCase() error = %v", err)
+	}
+	html, err := report.RenderHTML(data)
+	if err != nil {
+		t.Fatalf("RenderHTML() error = %v", err)
+	}
+	text := string(html)
+	if strings.Contains(text, "<script>alert(1)</script>") || strings.Contains(text, "<img src=x onerror=alert(1)>") {
+		t.Fatal("report contains unescaped attacker-controlled markup")
+	}
+	if !strings.Contains(text, "&lt;script&gt;") || !strings.Contains(text, "&lt;img") {
+		t.Fatal("report does not contain escaped evidence")
+	}
+}
