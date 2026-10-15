@@ -1,8 +1,10 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +85,76 @@ func TestAnalyzeCaseRejectsSymlinkInputs(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("warnings = %+v, want symlink warning", data.Warnings)
+	}
+}
+
+func TestOpenInputNoFollowRejectsSymlinkAtOpen(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("O_NOFOLLOW regression applies to the Linux deployment target")
+	}
+	directory := t.TempDir()
+	target := filepath.Join(directory, "outside.log")
+	link := filepath.Join(directory, "auth.log")
+	if err := os.WriteFile(target, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	file, err := openInputNoFollow(link)
+	if file != nil {
+		file.Close()
+	}
+	if !errors.Is(err, errNoFollowSymlink) {
+		t.Fatalf("openInputNoFollow() error = %v, want no-follow symlink error", err)
+	}
+}
+
+func TestAnalyzeCaseUsesEmbeddedTimezoneData(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+	if location.String() != "America/New_York" {
+		t.Fatalf("location = %q, want America/New_York", location)
+	}
+}
+
+func TestValidateReportOutputRejectsSupportedEvidence(t *testing.T) {
+	directory := t.TempDir()
+	input := filepath.Join(directory, "auth.log")
+	if err := os.WriteFile(input, []byte("evidence"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	paths := []string{
+		input,
+		filepath.Join(directory, ".", "auth.log"),
+		filepath.Join(directory, "nested", "..", "auth.log"),
+	}
+	alias := filepath.Join(directory, "case-alias")
+	if err := os.Symlink(directory, alias); err == nil {
+		paths = append(paths, filepath.Join(alias, "auth.log"))
+	}
+	for _, output := range paths {
+		if err := ValidateReportOutput(directory, output); err == nil || !strings.Contains(err.Error(), "supported input evidence") {
+			t.Errorf("ValidateReportOutput(%q) error = %v, want supported evidence error", output, err)
+		}
+	}
+}
+
+func TestValidateReportOutputRejectsSymlinkDestination(t *testing.T) {
+	directory := t.TempDir()
+	input := filepath.Join(directory, "auth.log")
+	output := filepath.Join(directory, "report.html")
+	if err := os.WriteFile(input, []byte("evidence"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.Symlink(input, output); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := ValidateReportOutput(directory, output); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("ValidateReportOutput() error = %v, want symlink error", err)
 	}
 }
 

@@ -59,6 +59,9 @@ func runAnalyze(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load timezone %q: %w", *timezone, err)
 	}
+	if err := app.ValidateReportOutput(*caseDir, *output); err != nil {
+		return err
+	}
 	data, err := app.AnalyzeCase(app.Options{CaseDir: *caseDir, Year: *year, Timezone: location})
 	if err != nil {
 		return err

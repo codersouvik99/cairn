@@ -4,6 +4,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -178,8 +179,11 @@ func readKnownFile(root, name, kind string, maxBytes int64) ([]byte, bool, repor
 	if !info.Mode().IsRegular() {
 		return nil, false, report.Source{}, fmt.Errorf("refusing non-regular input %s", name)
 	}
-	file, err := os.Open(path)
+	file, err := openInputNoFollow(path)
 	if err != nil {
+		if errors.Is(err, errNoFollowSymlink) {
+			return nil, false, report.Source{}, fmt.Errorf("refusing symlink input %s", name)
+		}
 		return nil, false, report.Source{}, fmt.Errorf("open %s: %w", name, err)
 	}
 	defer file.Close()
