@@ -121,6 +121,23 @@ type Event struct {
 	// Message is the portion after the syslog tag.  It is useful to later
 	// enrich the parser without losing the original normalized context.
 	Message string
+
+	// SourceReferences retains every source location represented by this
+	// canonical event.  It is populated by DeduplicateEvents; the legacy
+	// SourceFile, Filename, LineNumber, Line, and Raw fields continue to point
+	// at the first source occurrence for compatibility.
+	SourceReferences []SourceReference
+}
+
+// SourceReference identifies one source occurrence of an event.  Filename and
+// Line mirror SourceFile and LineNumber so callers using either naming
+// convention can consume deduplicated provenance without adapting the data.
+type SourceReference struct {
+	SourceFile string
+	Filename   string
+	LineNumber int
+	Line       int
+	Raw        string
 }
 
 // WarningKind categorizes a recoverable parser issue.
@@ -579,6 +596,105 @@ func makeWarning(kind WarningKind, sourceFile string, lineNumber int, raw, messa
 	}
 }
 
+type eventIdentity struct {
+	timestampKnown bool
+	timestampSec   int64
+	timestampNano  int
+	timestampText  string
+	kind           EventKind
+	host           string
+	process        string
+	user           string
+	actorUser      string
+	targetUser     string
+	sourceIP       string
+	authMethod     string
+	command        string
+	message        string
+}
+
+func identityOf(event Event) eventIdentity {
+	identity := eventIdentity{
+		timestampText: event.TimestampText,
+		kind:          event.Kind,
+		host:          event.Host,
+		process:       event.Process,
+		user:          event.User,
+		actorUser:     event.ActorUser,
+		targetUser:    event.TargetUser,
+		sourceIP:      event.SourceIP,
+		authMethod:    event.AuthMethod,
+		command:       event.Command,
+		message:       event.Message,
+	}
+	if !event.Timestamp.IsZero() {
+		utc := event.Timestamp.UTC()
+		identity.timestampKnown = true
+		identity.timestampSec = utc.Unix()
+		identity.timestampNano = utc.Nanosecond()
+	}
+	return identity
+}
+
+func sourceReferenceOf(event Event) SourceReference {
+	sourceFile := event.SourceFile
+	if sourceFile == "" {
+		sourceFile = event.Filename
+	}
+	filename := event.Filename
+	if filename == "" {
+		filename = sourceFile
+	}
+	lineNumber := event.LineNumber
+	if lineNumber == 0 {
+		lineNumber = event.Line
+	}
+	line := event.Line
+	if line == 0 {
+		line = lineNumber
+	}
+	return SourceReference{
+		SourceFile: sourceFile,
+		Filename:   filename,
+		LineNumber: lineNumber,
+		Line:       line,
+		Raw:        event.Raw,
+	}
+}
+
+func referencesOf(event Event) []SourceReference {
+	if len(event.SourceReferences) != 0 {
+		return append([]SourceReference(nil), event.SourceReferences...)
+	}
+	return []SourceReference{sourceReferenceOf(event)}
+}
+
+// DeduplicateEvents returns a stable canonical event for each semantically
+// identical parsed event.  Source location and raw text are deliberately not
+// part of identity, so copies found in different files collapse while all
+// occurrences remain available in SourceReferences.  The normalized event
+// fields, including the full message and timestamp, make the identity
+// conservative: sharing a timestamp alone can never collapse two events.
+//
+// The input slice and its events are not modified.  The legacy source fields
+// on each canonical event retain the first occurrence for compatibility.
+func DeduplicateEvents(events []Event) []Event {
+	result := make([]Event, 0, len(events))
+	seen := make(map[eventIdentity]int, len(events))
+	for _, input := range events {
+		event := input
+		event.SourceReferences = referencesOf(input)
+		identity := identityOf(input)
+		if index, ok := seen[identity]; ok {
+			result[index].SourceReferences = append(result[index].SourceReferences, event.SourceReferences...)
+			continue
+		}
+		seen[identity] = len(result)
+		result = append(result, event)
+	}
+	return result
+}
+
 // Timeline is a deterministic chronological copy of parsed events.  Events
 // with incomplete timestamps are retained after normalized events in source
 // order, because dropping them would lose useful evidence.
@@ -662,12 +778,13 @@ type Finding struct {
 }
 
 // RuleConfig controls the default deterministic rules.  Zero values select
-// the CAIRN defaults: five failures in ten minutes and a fifteen-minute
-// success correlation window.
+// the CAIRN defaults: five failures in ten minutes, a fifteen-minute success
+// correlation window, and a fifteen-minute privilege escalation age.
 type RuleConfig struct {
-	FailureThreshold int
-	FailureWindow    time.Duration
-	SuccessWindow    time.Duration
+	FailureThreshold          int
+	FailureWindow             time.Duration
+	SuccessWindow             time.Duration
+	PrivilegeEscalationWindow time.Duration
 }
 
 func (c RuleConfig) normalized() RuleConfig {
@@ -679,6 +796,9 @@ func (c RuleConfig) normalized() RuleConfig {
 	}
 	if c.SuccessWindow <= 0 {
 		c.SuccessWindow = 15 * time.Minute
+	}
+	if c.PrivilegeEscalationWindow <= 0 {
+		c.PrivilegeEscalationWindow = 15 * time.Minute
 	}
 	return c
 }
@@ -702,6 +822,7 @@ func AnalyzeEvents(events []Event) []Finding { return Analyze(events).Findings }
 // events.  It does not mutate the caller's slice.
 func AnalyzeWithConfig(events []Event, config RuleConfig) Analysis {
 	config = config.normalized()
+	events = DeduplicateEvents(events)
 	timeline := BuildTimeline(events)
 	analysis := Analysis{Timeline: timeline, Events: timeline.Events}
 
@@ -743,7 +864,8 @@ func AnalyzeWithConfig(events []Event, config RuleConfig) Analysis {
 			if event.SourceIP != "" {
 				failures := retainRecent(failuresBySource[event.SourceIP], event.Timestamp, config.SuccessWindow)
 				failuresBySource[event.SourceIP] = failures
-				if len(failures) > 0 {
+				failuresInFailureWindow := retainRecent(append([]Event(nil), failures...), event.Timestamp, config.FailureWindow)
+				if len(failuresInFailureWindow) >= config.FailureThreshold {
 					analysis.Findings = append(analysis.Findings, Finding{
 						Rule:         RuleSuccessAfterFailures,
 						Severity:     SeverityHigh,
@@ -753,8 +875,8 @@ func AnalyzeWithConfig(events []Event, config RuleConfig) Analysis {
 						User:         event.User,
 						SourceFile:   event.SourceFile,
 						LineNumber:   event.LineNumber,
-						FailureCount: len(failures),
-						Evidence:     append([]Event(nil), failures...),
+						FailureCount: len(failuresInFailureWindow),
+						Evidence:     append([]Event(nil), failuresInFailureWindow...),
 					})
 				}
 			}
@@ -768,7 +890,7 @@ func AnalyzeWithConfig(events []Event, config RuleConfig) Analysis {
 			if actor == "" {
 				actor = event.User
 			}
-			if login, ok := latestMatchingLogin(loginsByUser[actor], event); ok {
+			if login, ok := latestMatchingLogin(loginsByUser[actor], event, config.PrivilegeEscalationWindow); ok {
 				explicit := event.Kind == EventSudoToRoot
 				word := "potential root-session escalation"
 				if explicit {
@@ -816,7 +938,7 @@ func retainRecent(events []Event, current time.Time, window time.Duration) []Eve
 	return kept
 }
 
-func latestMatchingLogin(logins []Event, escalation Event) (Event, bool) {
+func latestMatchingLogin(logins []Event, escalation Event, maxAge time.Duration) (Event, bool) {
 	actor := escalation.ActorUser
 	if actor == "" {
 		actor = escalation.User
@@ -824,6 +946,9 @@ func latestMatchingLogin(logins []Event, escalation Event) (Event, bool) {
 	for index := len(logins) - 1; index >= 0; index-- {
 		login := logins[index]
 		if login.Timestamp.IsZero() || login.Timestamp.After(escalation.Timestamp) {
+			continue
+		}
+		if escalation.Timestamp.Sub(login.Timestamp) > maxAge {
 			continue
 		}
 		if escalation.SourceIP != "" && login.SourceIP != "" && escalation.SourceIP != login.SourceIP {

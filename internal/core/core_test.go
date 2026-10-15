@@ -259,7 +259,11 @@ func TestRulesSuccessWindowAndDifferentIP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lines := []string{
-				"Jan 10 00:00:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
+				"Jan 10 00:05:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
+				"Jan 10 00:06:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
+				"Jan 10 00:07:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
+				"Jan 10 00:08:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
+				"Jan 10 00:09:00 gateway sshd[1]: Failed password for alice from 192.0.2.20 port 22 ssh2",
 				"Jan 10 " + tt.successAt + " gateway sshd[1]: Accepted password for alice from " + tt.successIP + " port 22 ssh2",
 			}
 			parsed := ParseAuthLines(lines, "auth.log", testMetadata)
@@ -271,6 +275,71 @@ func TestRulesSuccessWindowAndDifferentIP(t *testing.T) {
 				t.Fatalf("success findings = %+v, want present %v", findings, tt.wantFinding)
 			}
 		})
+	}
+}
+
+func TestSuccessAfterFailuresRequiresConfiguredThreshold(t *testing.T) {
+	oneFailure := ParseAuthLines([]string{
+		"Jan 10 00:00:00 gateway sshd[1]: Failed password for alice from 192.0.2.40 port 22 ssh2",
+		"Jan 10 00:01:00 gateway sshd[1]: Accepted password for alice from 192.0.2.40 port 22 ssh2",
+	}, "auth.log", testMetadata)
+	if got := findingsForRule(Analyze(oneFailure.Events).Findings, RuleSuccessAfterFailures); len(got) != 0 {
+		t.Fatalf("one failure produced success finding = %+v", got)
+	}
+
+	thresholdFailures := []string{
+		"Jan 10 00:00:00 gateway sshd[1]: Failed password for alice from 192.0.2.41 port 22 ssh2",
+		"Jan 10 00:01:00 gateway sshd[1]: Failed password for alice from 192.0.2.41 port 22 ssh2",
+		"Jan 10 00:02:00 gateway sshd[1]: Failed password for alice from 192.0.2.41 port 22 ssh2",
+		"Jan 10 00:03:00 gateway sshd[1]: Failed password for alice from 192.0.2.41 port 22 ssh2",
+		"Jan 10 00:04:00 gateway sshd[1]: Failed password for alice from 192.0.2.41 port 22 ssh2",
+		"Jan 10 00:05:00 gateway sshd[1]: Accepted password for alice from 192.0.2.41 port 22 ssh2",
+	}
+	parsed := ParseAuthLines(thresholdFailures, "auth.log", testMetadata)
+	got := findingsForRule(Analyze(parsed.Events).Findings, RuleSuccessAfterFailures)
+	if len(got) != 1 || got[0].FailureCount != 5 || len(got[0].Evidence) != 5 {
+		t.Fatalf("threshold failures produced findings = %+v", got)
+	}
+}
+
+func TestDeduplicateEventsPreservesAllSourceReferences(t *testing.T) {
+	line := "Jan 10 00:00:00 gateway sshd[1]: Failed password for alice from 192.0.2.50 port 22 ssh2"
+	first := ParseLine("auth.log", 2, line, testMetadata)
+	second := ParseLine("secure", 9, line, testMetadata)
+	if first.Event == nil || second.Event == nil {
+		t.Fatal("expected duplicate lines to parse")
+	}
+
+	deduplicated := DeduplicateEvents([]Event{*first.Event, *second.Event})
+	if len(deduplicated) != 1 {
+		t.Fatalf("deduplicated events = %+v, want one canonical event", deduplicated)
+	}
+	canonical := deduplicated[0]
+	if canonical.SourceFile != "auth.log" || canonical.LineNumber != 2 || canonical.Raw != line {
+		t.Fatalf("canonical legacy source fields = %+v", canonical)
+	}
+	if len(canonical.SourceReferences) != 2 {
+		t.Fatalf("source references = %+v, want both occurrences", canonical.SourceReferences)
+	}
+	if canonical.SourceReferences[0].Filename != "auth.log" || canonical.SourceReferences[0].Line != 2 ||
+		canonical.SourceReferences[0].Raw != line || canonical.SourceReferences[1].Filename != "secure" ||
+		canonical.SourceReferences[1].Line != 9 || canonical.SourceReferences[1].Raw != line {
+		t.Fatalf("source references = %+v", canonical.SourceReferences)
+	}
+	if analysis := Analyze([]Event{*first.Event, *second.Event}); len(analysis.Events) != 1 || len(analysis.Events[0].SourceReferences) != 2 {
+		t.Fatalf("analysis did not use canonical event = %+v", analysis.Events)
+	}
+}
+
+func TestDeduplicateEventsKeepsDistinctEventsAtSameTimestamp(t *testing.T) {
+	timestamp := time.Date(2024, time.January, 10, 0, 0, 0, 0, time.UTC)
+	events := []Event{
+		{Kind: EventFailedPassword, Timestamp: timestamp, SourceIP: "192.0.2.51", User: "alice", Message: "Failed password for alice from 192.0.2.51"},
+		{Kind: EventFailedPassword, Timestamp: timestamp, SourceIP: "192.0.2.52", User: "alice", Message: "Failed password for alice from 192.0.2.52"},
+		{Kind: EventAcceptedLogin, Timestamp: timestamp, SourceIP: "192.0.2.51", User: "alice", Message: "Accepted password for alice from 192.0.2.51"},
+	}
+	if got := DeduplicateEvents(events); len(got) != len(events) {
+		t.Fatalf("same-timestamp events = %+v, want all distinct events retained", got)
 	}
 }
 
@@ -302,6 +371,24 @@ func TestPrivilegeEscalationAfterSuccessfulLogin(t *testing.T) {
 	}, "auth.log", testMetadata)
 	if got := findingsForRule(Analyze(noMatch.Events).Findings, RulePrivilegeEscalation); len(got) != 0 {
 		t.Fatalf("unmatched escalation findings = %+v", got)
+	}
+}
+
+func TestPrivilegeEscalationRequiresMaximumCorrelationAge(t *testing.T) {
+	stale := ParseAuthLines([]string{
+		"Jan 10 11:44:00 gateway sshd[1]: Accepted publickey for alice from 192.0.2.60 port 22 ssh2",
+		"Jan 10 12:00:00 gateway sudo[2]: alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/bin/bash",
+	}, "auth.log", testMetadata)
+	if got := findingsForRule(Analyze(stale.Events).Findings, RulePrivilegeEscalation); len(got) != 0 {
+		t.Fatalf("stale login produced privilege findings = %+v", got)
+	}
+
+	inWindow := ParseAuthLines([]string{
+		"Jan 10 11:45:00 gateway sshd[1]: Accepted publickey for alice from 192.0.2.60 port 22 ssh2",
+		"Jan 10 12:00:00 gateway sudo[2]: alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/bin/bash",
+	}, "auth.log", testMetadata)
+	if got := findingsForRule(Analyze(inWindow.Events).Findings, RulePrivilegeEscalation); len(got) != 1 {
+		t.Fatalf("in-window login produced privilege findings = %+v, want one", got)
 	}
 }
 
