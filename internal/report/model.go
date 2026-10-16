@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/frontier-buildathon/cairn/internal/compose"
-	"github.com/frontier-buildathon/cairn/internal/core"
+	"github.com/codersouvik99/cairn/internal/compose"
+	"github.com/codersouvik99/cairn/internal/core"
 )
 
 // Source describes one file that was safely read from the case directory.

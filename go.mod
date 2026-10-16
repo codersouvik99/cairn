@@ -1,4 +1,4 @@
-module github.com/frontier-buildathon/cairn
+module github.com/codersouvik99/cairn
 
 go 1.27.0
 

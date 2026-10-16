@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/frontier-buildathon/cairn/internal/app"
-	"github.com/frontier-buildathon/cairn/internal/demo"
-	"github.com/frontier-buildathon/cairn/internal/report"
+	"github.com/codersouvik99/cairn/internal/app"
+	"github.com/codersouvik99/cairn/internal/demo"
+	"github.com/codersouvik99/cairn/internal/report"
 )
 
 const version = "0.1.0"

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/frontier-buildathon/cairn/internal/compose"
-	"github.com/frontier-buildathon/cairn/internal/core"
-	"github.com/frontier-buildathon/cairn/internal/report"
+	"github.com/codersouvik99/cairn/internal/compose"
+	"github.com/codersouvik99/cairn/internal/core"
+	"github.com/codersouvik99/cairn/internal/report"
 )
 
 const defaultMaxFileBytes = 8 * 1024 * 1024

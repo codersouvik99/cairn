@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/frontier-buildathon/cairn/internal/core"
-	"github.com/frontier-buildathon/cairn/internal/demo"
-	"github.com/frontier-buildathon/cairn/internal/report"
+	"github.com/codersouvik99/cairn/internal/core"
+	"github.com/codersouvik99/cairn/internal/demo"
+	"github.com/codersouvik99/cairn/internal/report"
 )
 
 func TestAnalyzeDemoCaseProducesStableEvidenceBackedResult(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/frontier-buildathon/cairn/internal/compose"
-	"github.com/frontier-buildathon/cairn/internal/core"
+	"github.com/codersouvik99/cairn/internal/compose"
+	"github.com/codersouvik99/cairn/internal/core"
 )
 
 var htmlTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
